@@ -1,0 +1,2 @@
+cd /home/liamjackson/DockerHD/
+cat files/CoprHD.x86_64-3.0.0.0.*.tgz | docker import - coprhd:latest
