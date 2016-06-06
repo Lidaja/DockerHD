@@ -1,4 +1,4 @@
-#!/bin/bash
+#! /bin/bash
 #
 # Copyright 2015-2016 EMC Corporation
 # All Rights Reserved
@@ -58,7 +58,6 @@ function installPackages
   zypper --reposd-dir=/tmp/coprhd.d --non-interactive --non-interactive-include-reboot-patches --no-gpg-checks patch -g security --no-recommends
   rm -fr /tmp/coprhd.d
 
-  zypper --non-interactive install iproute2
   zypper --non-interactive clean
 }
 
@@ -66,8 +65,7 @@ function installJava
 {
   java=$2
   [ ! -z "${java}" ] || java=8
-  #set java /usr/lib64/jvm/jre-1.${java}.0-openjdk/bin/java
-  #set javac /usr/lib64/jvm/java-1.${java}.0-openjdk/bin/javac
+
   update-alternatives --set java /usr/lib64/jvm/jre-1.${java}.0-openjdk/bin/java
   update-alternatives --set javac /usr/lib64/jvm/java-1.${java}.0-openjdk/bin/javac
 }
@@ -148,11 +146,12 @@ function waitStorageOS
 
 function installDockerEnv
 {
-  workspace=${PWD}
-  #node_count=$3
-  container=$2-container
-  #[ ! -z "${workspace}" ] || workspace="${PWD}"
-  #[ ! -z "${node_count}" ] || node_count=1
+  workspace=$2
+  node_count=$3
+  name=$4
+
+  [ ! -z "${workspace}" ] || workspace="${PWD}"
+  [ ! -z "${node_count}" ] || node_count=1
 
   cat > ${workspace}/docker-env.service <<EOF
 [Unit]
@@ -163,109 +162,59 @@ After=network.service ipchecktool.service sshd.service ntpd.service ipsec.servic
 [Service]
 Type=simple
 WorkingDirectory=/
-ExecStart=-/bin/bash -c "/opt/ADG/conf/configure.sh enableStorageOS"
+ExecStart=-/bin/bash -c "/coprhd/configure.sh enableStorageOS"
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-  mkdir -p ${workspace}/data
-  chmod 777 ${workspace}/data
-  #for i in $(seq 1 ${node_count}); do
-  #  mkdir -p ${workspace}/data.$i
-  #  chmod 777 ${workspace}/data.$i
-  #done
-
+  for i in $(seq 1 ${node_count}); do
+    mkdir -p ${workspace}/data
+    chmod 777 ${workspace}/data
+  done
+  image=$name-image
+  container=$name-container
   network_vip=(172.17.0.100)
   network_vip6=(2001:0db8:0001:0000:0000:0242:ac11:0064)
   vip=${network_vip[0]}
   vip6=${network_vip6[0]}
+  echo $container
+  echo "Starting $container..."
+  docker stop $container &> /dev/null
+  docker rm $container &> /dev/null
+  docker run --privileged -d -e "HOSTNAME=$container" -v ${workspace}/data:/data -v ${workspace}/docker-env.service:/etc/systemd/system/multi-user.target.wants/docker-env.service --name=$container $image /sbin/init
+  docker exec $container /bin/bash -c "sed /$(docker inspect -f {{.Config.Hostname}} $container)/d /etc/hosts > /etc/hosts.new"
+  docker exec $container /bin/bash -c "cat /etc/hosts.new > /etc/hosts"
+  docker exec $container /bin/bash -c "rm /etc/hosts.new"
+  docker exec $container /bin/bash -c "echo \"$container\" > /etc/HOSTNAME"
+  docker exec $container /bin/bash -c "echo \"${network_vip[0]}	coordinator\" >> /etc/hosts"
+  docker exec $container /bin/bash -c "echo \"${network_vip[0]}	coordinator.bridge\" >> /etc/hosts"
+  docker exec $container hostname $container
+  network_vip+=($(docker inspect -f {{.NetworkSettings.IPAddress}} $container))
+  network_vip6+=($(docker inspect -f {{.NetworkSettings.GlobalIPv6Address}} $container))
 
-  echo "Starting ${container}..."
-  docker stop ${container} &> /dev/null
-  docker rm ${container} &> /dev/null
-  docker run --privileged -d -e "HOSTNAME=$2" -v ${workspace}/data:/data -v ${workspace}/docker-env.service:/etc/systemd/system/multi-user.target.wants/docker-env.service --name=${container} $2-image /sbin/init
-  docker exec ${container} /bin/bash -c "sed /$(docker inspect -f {{.Config.Hostname}} ${container})/d /etc/hosts > /etc/hosts.new"
-  docker exec ${container} /bin/bash -c "cat /etc/hosts.new > /etc/hosts"
-  docker exec ${container} /bin/bash -c "rm /etc/hosts.new"
-  docker exec ${container} /bin/bash -c "echo \"${container}\" > /etc/HOSTNAME"
-  docker exec ${container} /bin/bash -c "echo \"${network_vip[0]}  coordinator\" >> /etc/hosts"
-  docker exec ${container} /bin/bash -c "echo \"${network_vip[0]}  coordinator.bridge\" >> /etc/hosts"
-  docker exec ${container} hostname ${container}
-  network_vip+=($(docker inspect -f {{.NetworkSettings.IPAddress}} ${container}))
-  network_vip6+=($(docker inspect -f {{.NetworkSettings.GlobalIPv6Address}} ${container}))
-#
-#
-  echo "network_prefix_length=$(docker inspect -f {{.NetworkSettings.IPPrefixLen}} ${container})" >> ${workspace}/data/dockerenv.sh
-  echo "network_prefix_length6=$(docker inspect -f {{.NetworkSettings.GlobalIPv6PrefixLen}} ${container})" >> ${workspace}/data/dockerenv.sh
-  echo "network_1_ipaddr6=${network_vip6[1]}" >> ${workspace}/data/dockerenv.sh
+  echo "#!/bin/bash" > ${workspace}/data/dockerenv.sh
+  echo "network_prefix_length=$(docker inspect -f {{.NetworkSettings.IPPrefixLen}} $container)" >> ${workspace}/data/dockerenv.sh
+  echo "network_prefix_length6=$(docker inspect -f {{.NetworkSettings.GlobalIPv6PrefixLen}} $container)" >> ${workspace}/data/dockerenv.sh
   echo "network_1_ipaddr=${network_vip[1]}" >> ${workspace}/data/dockerenv.sh
-  echo "network_gateway6=$(docker inspect -f {{.NetworkSettings.IPv6Gateway}} ${container})" >> ${workspace}/data/dockerenv.sh
-  echo "network_gateway=$(docker inspect -f {{.NetworkSettings.Gateway}} ${container})" >> ${workspace}/data/dockerenv.sh
+  echo "network_1_ipaddr6=${network_vip6[1]}" >> ${workspace}/data/dockerenv.sh
+  
+  echo "network_gateway=$(docker inspect -f {{.NetworkSettings.Gateway}} $container)" >> ${workspace}/data/dockerenv.sh
+  echo "network_gateway6=$(docker inspect -f {{.NetworkSettings.IPv6Gateway}} $container)" >> ${workspace}/data/dockerenv.sh
   echo "sed -i s/network_netmask=.*/network_netmask=255.255.0.0/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
-  echo "sed -i s/node_count=.*/node_count=1/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
-  echo "sed -i s/node_id=.*/node_id=${container}/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
+  echo "sed -i s/node_count=.*/node_count=$node_count/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
+  echo "sed -i s/node_id=.*/node_id=$container/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
   echo "sed -i s/network_1_ipaddr=.*/network_1_ipaddr=\${network_1_ipaddr}/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
   echo "sed -i s/network_gateway=.*/network_gateway=\${network_gateway}/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
   echo "sed -i s/network_prefix_length=.*/network_prefix_length=\${network_prefix_length}/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
   echo "sed -i s/network_vip=.*/network_vip=${vip}/g /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
-  echo "echo \"network_1_ipaddr=\${network_1_ipaddr}\" >> /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
-  echo "echo \"network_1_ipaddr6=\${network_1_ipaddr6}\" >> /etc/ovfenv.properties" >> ${workspace}/data/dockerenv.sh
   echo "exit 0" >> ${workspace}/data/dockerenv.sh
+  
   chmod a+x ${workspace}/data/dockerenv.sh
-  docker exec ${container} chown -R storageos:storageos /data
-  docker exec ${container} /coprhd/configure.sh installNetworkConfigurationFile 1 10.10.30.1 255.255.255.0 10.10.30.231 10.10.30.235 ${container}
-  docker exec ${container} bash /data/dockerenv.sh
-  #mkdir /etc/ovfenv.properties
-  #bash /home/liamjackson/DockerHD/data/dockerenv.sh
-
-   # echo "Starting ${container}$i..."
-   # docker stop ${container}$i &> /dev/null
-   # docker rm ${container}$i &> /dev/null
-   # docker run --privileged -d -e "HOSTNAME=${container}$i" -v ${workspace}/data.$i:/data -v ${workspace}/docker-env.service:/etc/systemd/system/multi-user.target.wants/docker-env.service --name=${container}$i ${container}$i /sbin/init
-   # docker exec ${container}$i /bin/bash -c "sed /$(docker inspect -f {{.Config.Hostname}} ${container}$i)/d /etc/hosts > /etc/hosts.new"
-   # docker exec ${container}$i /bin/bash -c "cat /etc/hosts.new > /etc/hosts"
-   # docker exec ${container}$i /bin/bash -c "rm /etc/hosts.new"
-   # docker exec ${container}$i /bin/bash -c "echo \"${container}$i\" > /etc/HOSTNAME"
-   # docker exec ${container}$i /bin/bash -c "echo \"${network_vip[0]}	coordinator\" >> /etc/hosts"
-   # docker exec ${container}$i /bin/bash -c "echo \"${network_vip[0]}	coordinator.bridge\" >> /etc/hosts"
-   # docker exec ${container}$i hostname ${container}$i
-   # network_vip+=($(docker inspect -f {{.NetworkSettings.IPAddress}} ${container}$i))
-   # network_vip6+=($(docker inspect -f {{.NetworkSettings.GlobalIPv6Address}} ${container}$i))
-  #done
-
- # for i in $(seq 1 ${node_count}); do
- #   echo "#!/bin/bash" > ${workspace}/data.$i/dockerenv.sh
- #   echo "network_prefix_length=$(docker inspect -f {{.NetworkSettings.IPPrefixLen}} ${container}$i)" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "network_prefix_length6=$(docker inspect -f {{.NetworkSettings.GlobalIPv6PrefixLen}} ${container}$i)" >> ${workspace}/data.$i/dockerenv.sh
- #   for j in $(seq 1 ${node_count}); do
- #     echo "network_${j}_ipaddr6=${network_vip6[$j]}" >> ${workspace}/data.$i/dockerenv.sh
- #     #echo "network_${j}_ipaddr=10.10.30.231" >> ${workspace}/data.$i/dockerenv.sh
- #     echo "network_${j}_ipaddr=${network_vip[$j]}" >> ${workspace}/data.$i/dockerenv.sh
- #   done
- #   echo "network_gateway6=$(docker inspect -f {{.NetworkSettings.IPv6Gateway}} ${container}$i)" >> ${workspace}/data.$i/dockerenv.sh
- #   #echo "network_gateway=10.10.30.1" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "network_gateway=$(docker inspect -f {{.NetworkSettings.Gateway}} ${container}$i)" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "sed -i s/network_netmask=.*/network_netmask=255.255.0.0/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "sed -i s/node_count=.*/node_count=$node_count/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "sed -i s/node_id=.*/node_id=${container}$i/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "sed -i s/network_1_ipaddr=.*/network_1_ipaddr=\${network_1_ipaddr}/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "sed -i s/network_gateway=.*/network_gateway=\${network_gateway}/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   # echo "sed -i s/network_1_ipaddr6=.*/network_1_ipaddr6=\${network_1_ipaddr6}/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   # echo "sed -i s/network_gateway6=.*/network_gateway6=\${network_gateway6}/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "sed -i s/network_prefix_length=.*/network_prefix_length=\${network_prefix_length}/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   echo "sed -i s/network_vip=.*/network_vip=${vip}/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   # echo "sed -i s/network_vip6=.*/network_vip6=${vip6}/g /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   for j in $(seq 2 ${node_count}); do
- #     echo "echo \"network_${j}_ipaddr=\${network_${j}_ipaddr}\" >> /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #     # echo "echo \"network_${j}_ipaddr6=\${network_${j}_ipaddr6}\" >> /etc/ovfenv.properties" >> ${workspace}/data.$i/dockerenv.sh
- #   done
- #   echo "exit 0" >> ${workspace}/data.$i/dockerenv.sh
- #   chmod a+x ${workspace}/data.$i/dockerenv.sh
- #   docker exec ${container}$i chown -R storageos:storageos /data
- #   docker exec ${container}$i /opt/ADG/conf/configure.sh installNetworkConfigurationFile 1 10.10.30.1 255.255.255.0 10.10.30.231 10.10.30.235 ${container}
- #   docker exec ${container}$i /data/dockerenv.sh
- # done
+  docker exec $container chown -R storageos:storageos /data
+  docker exec $container /coprhd/configure.sh installNetworkConfigurationFile #1 10.10.30.1 255.255.255.0 10.10.30.231
+  docker exec $container /data/dockerenv.sh
+  
   iptables -t nat -A DOCKER -p tcp --dport 443 -j DNAT --to-destination ${vip}:443
   iptables -t nat -A DOCKER -p tcp --dport 4443 -j DNAT --to-destination ${vip}:4443
   iptables -t nat -A DOCKER -p tcp --dport 8080 -j DNAT --to-destination ${vip}:8080
@@ -279,10 +228,10 @@ function uninstallDockerEnv
   [ ! -z "${workspace}" ] || workspace="${PWD}"
   [ ! -z "${node_count}" ] || node_count=1
   for i in $(seq 1 ${node_count}); do
-    echo "Stopping ${container}$i..."
-    docker stop ${container}$i &> /dev/null
-    docker rm ${container}$i &> /dev/null
-    rm -fr ${workspace}/data.$i
+    echo "Stopping $container..."
+    docker stop $container &> /dev/null
+    docker rm $container &> /dev/null
+    rm -fr ${workspace}/data
   done
   rm -fr ${workspace}/docker-env.service
   iptables -F DOCKER -t nat
@@ -312,13 +261,15 @@ function installNetworkConfigurationFile
   eth=$2
   gateway=$3
   netmask=$4
-  ipaddr=$5
-  vipaddr=$6
-  container=$7
+  ipaddr=172.17.0.2
   [ ! -z "${eth}" ] || eth=1
-  [ ! -z "${gateway}" ] || gateway=$(route -n | grep 'UG[ \t]' | awk '{print $2}')
+  [ ! -z "${gateway}" ] || gateway=$(/sbin/route -n | grep 'UG[ \t]' | awk '{print $2}')
   [ ! -z "${netmask}" ] || netmask='255.255.255.0'
   [ ! -z "${ipaddr}" ] || ipaddr=$(ip addr | awk '/inet addr/{print substr($2,6)}' | head -n ${eth} | tail -n 1)
+  echo $eth
+  echo $gateway
+  echo $netmask
+  echo $ipaddr
   cat > /etc/ovfenv.properties <<EOF
 network_1_ipaddr6=::0
 network_1_ipaddr=${ipaddr}
@@ -327,9 +278,9 @@ network_gateway=${gateway}
 network_netmask=${netmask}
 network_prefix_length=64
 network_vip6=::0
-network_vip=${vipaddr}
+network_vip=${ipaddr}
 node_count=1
-node_id=${container}1
+node_id=vipr1
 EOF
 }
 
@@ -496,3 +447,4 @@ EOF
 }
 
 $1 "$@"
+

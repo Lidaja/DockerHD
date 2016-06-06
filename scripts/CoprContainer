@@ -1,11 +1,25 @@
 cd /home/liamjackson/DockerHD/
-echo $1-container
+#echo $1-container
 docker stop $1-container
+#echo 1
 docker rm $1-container
+#echo 2
 docker rmi -f $1-image
+#echo 3
+
 ./scripts/configure.sh uninstallDockerEnv
+
+echo 4
+
 docker build -t "$1-image" .
-./scripts/configure.sh installDockerEnv $1
-#docker exec -it $1-container /coprhd/configure.sh waitStorageOS
+
+echo 5
+
+./scripts/configure.sh installDockerEnv /home/liamjackson/DockerHD/ 1 $1
+docker exec $1-container rpm -iv coprhd/storageos-*.x86_64.rpm
+docker exec $1-container rm -f /coprhd/storageos-*.x86_64.rpm
+
+echo 6
+docker exec -it $1-container /coprhd/configure.sh waitStorageOS
 
 
