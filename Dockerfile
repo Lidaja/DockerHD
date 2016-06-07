@@ -10,19 +10,16 @@ ADD http://download.opensuse.org/repositories/home:/seife:/testing/openSUSE_13.2
 RUN rpm -Uvh --nodeps sipcalc-1.1.6-5.1.x86_64.rpm && \
     rm -f sipcalc-1.1.6-5.1.x86_64.rpm
 RUN groupadd storageos && useradd -d /opt/storageos -g storageos storageos
-##COPY files/jre-8u91-linux-x64.rpm /coprhd
 COPY files/ifconfig /bin
 COPY files/route /sbin
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-##COPY files/javac /usr/lib64/jvm/java-1.8.0-openjdk/bin/javac
 RUN /coprhd/configure.sh installJava
 RUN /coprhd/configure.sh installNginx
 RUN /coprhd/configure.sh installStorageOS
-#RUN /coprhd/configure.sh installNetwork
+##RUN /coprhd/configure.sh installNetwork
 RUN /coprhd/configure.sh installXorg
-##RUN /coprhd/configure.sh disableStorageOS
-RUN zypper --non-interactive install hostname iproute2 vim
-COPY files/storageos-3.5.0.0.7e73abc-1.x86_64.rpm /coprhd
-#RUN DO_NOT_START="yes" rpm -iv coprhd/storageos-*.x86_64.rpm && \
-#    rm -f /coprhd/storageos-*.x86_64.rpm
+#RUN /coprhd/configure.sh disableStorageOS
+RUN zypper --non-interactive install hostname iproute2 vim wget tar libopenssl-devel gcc ndisc6
+RUN cd ~ && wget http://www.keepalived.org/software/keepalived-1.2.19.tar.gz && tar xzvf keepalived* && cd keepalived* && ./configure
+COPY files/RPMS/clean-storageos-3.5.0.0.6366ca0-1.x86_64.rpm /coprhd
 CMD ["/sbin/init"]

@@ -16,8 +16,8 @@ docker build -t "$1-image" .
 echo 5
 
 ./scripts/configure.sh installDockerEnv /home/liamjackson/DockerHD/ 1 $1
-docker exec $1-container rpm -iv coprhd/storageos-*.x86_64.rpm
-docker exec $1-container rm -f /coprhd/storageos-*.x86_64.rpm
+docker exec $1-container rpm -iv /coprhd/clean-storageos-3.5.0.0.6366ca0-1.x86_64.rpm
+docker exec $1-container rm -f /coprhd/clean-storageos-3.5.0.0.6366ca0-1.x86_64.rpm
 
 echo 6
 docker exec -it $1-container /coprhd/configure.sh waitStorageOS

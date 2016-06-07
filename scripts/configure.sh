@@ -138,6 +138,7 @@ function waitStorageOS
     sleep 35
   done
   until $(curl --silent --insecure https://${network_1_ipaddr}:4443/formlogin | grep --quiet "Authorized Users Only" &>/dev/null); do
+    echo network_1_ipaddr=${network_1_ipaddr}
     echo "Warning: service unavailable. Waiting..."
     sleep 25
   done
