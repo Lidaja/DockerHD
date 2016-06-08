@@ -243,13 +243,13 @@ EOF
   iptables -t nat -A DOCKER -p tcp --dport 8080 -j DNAT --to-destination ${vip}:8080
   iptables -t nat -A DOCKER -p tcp --dport 8443 -j DNAT --to-destination ${vip}:8443
   echo 11
+  #docker exec vipr1 rm /opt/storageos/logs/*.*
   addCustomCoprHD
 
 }
 
 function addCustomCoprHD
 {
-
     docker cp /home/liamjackson/DockerHD/files/RPMS/liam-storageos-3.5.0.0.6366ca0-1.x86_64.rpm vipr1:/tmp
     NAME=$(docker exec vipr$i rpm -qa | grep storageos)
     docker exec vipr1 rpm -e $NAME
