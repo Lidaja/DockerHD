@@ -1,0 +1,7 @@
+docker rmi lijax/$1
+docker build -t "$1" .
+id=$(echo $(docker images | grep -n $1) | cut -d " " -f 3)
+docker tag $id lijax/$1:latest
+docker rmi $1
+docker login --username=lijax --email=lijax@hotmail.com
+docker push lijax/$1

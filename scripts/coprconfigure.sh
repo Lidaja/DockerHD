@@ -182,7 +182,7 @@ EOF
     docker stop vipr$i &> /dev/null
     echo 2
     docker rm vipr$i &> /dev/null
-    docker run --privileged -d -e "HOSTNAME=vipr$i" -v ${workspace}/data.$i:/data -v ${workspace}/docker-env.service:/etc/systemd/system/multi-user.target.wants/docker-env.service --name=vipr$i coprhd /sbin/init
+    docker run --privileged -d -e "HOSTNAME=vipr$i" -v ${workspace}/data.$i:/data -v ${workspace}/docker-env.service:/etc/systemd/system/multi-user.target.wants/docker-env.service --name=vipr$i test /sbin/init
     echo 3
     #NAME=$(docker exec vipr$i rpm -qa | grep storageos)
     #docker exec vipr$i rpm -e $NAME
@@ -250,10 +250,10 @@ EOF
 
 function addCustomCoprHD
 {
-    docker cp /home/liamjackson/DockerHD/files/RPMS/liam-storageos-3.5.0.0.6366ca0-1.x86_64.rpm vipr1:/tmp
+    #docker cp /home/liamjackson/DockerHD/files/RPMS/liam-storageos-3.5.0.0.6366ca0-1.x86_64.rpm vipr1:/tmp
     NAME=$(docker exec vipr$i rpm -qa | grep storageos)
     docker exec vipr1 rpm -e $NAME
-    docker exec vipr1 rpm -Uvh /tmp/liam-storageos-3.5.0.0.6366ca0-1.x86_64.rpm
+    docker exec vipr1 rpm -Uvh /files/liam-storageos-3.5.0.0.6366ca0-1.x86_64.rpm
     docker exec -it vipr1 /opt/ADG/conf/configure.sh waitStorageOS
 }
 function uninstallDockerEnv
