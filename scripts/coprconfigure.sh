@@ -182,7 +182,7 @@ EOF
     docker stop vipr$i &> /dev/null
     echo 2
     docker rm vipr$i &> /dev/null
-    docker run --privileged -d -e "HOSTNAME=vipr$i" -v ${workspace}/data.$i:/data -v ${workspace}/docker-env.service:/etc/systemd/system/multi-user.target.wants/docker-env.service --name=vipr$i test /sbin/init
+    docker run --privileged -d -e "HOSTNAME=vipr$i" -p 80:80 -v /var/lib/denali-ansible:/var/lib/denali-ansible -v /usr/share/denali-ansible:/usr/share/denali-ansible -v /etc/ansible:/etc/ansible -v /usr/lib/python2.7:/usr/lib/python2.7 -v ${workspace}/data.$i:/data -v ${workspace}/docker-env.service:/etc/systemd/system/multi-user.target.wants/docker-env.service --name=vipr$i lijax/coprhd-dev /sbin/init
     echo 3
     #NAME=$(docker exec vipr$i rpm -qa | grep storageos)
     #docker exec vipr$i rpm -e $NAME
